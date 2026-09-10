@@ -1,0 +1,84 @@
+name: exposure-amass
+
+x-amass-build: &amass-build
+  context: .
+  args:
+    AMASS_VERSION: ${AMASS_VERSION:-v5.1.1}
+
+x-amass-common: &amass-common
+  env_file: .env
+  volumes:
+    - ./config:/config:ro
+    - ./output:/data
+  networks: [amass]
+
+services:
+  # OAM asset database. Holds every discovered asset across runs, which is what
+  # makes `track` and repeat scans useful.
+  assetdb:
+    build:
+      context: ./postgres
+      args:
+        POSTGRES_VERSION: ${POSTGRES_VERSION:-17-alpine}
+    image: exposure-rh/amass-assetdb:${POSTGRES_VERSION:-17-alpine}
+    container_name: amass-assetdb
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Consumed by the initdb script on first boot.
+      AMASS_DB: ${AMASS_DB_NAME:-assetdb}
+      AMASS_USER: ${AMASS_DB_USER:-amass}
+      AMASS_PASSWORD: ${AMASS_DB_PASSWORD:?set AMASS_DB_PASSWORD in .env}
+    volumes:
+      - assetdb-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${AMASS_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+    networks: [amass]
+    # Left unpublished on purpose. Uncomment to poke at it with psql.
+    # ports:
+    #   - "127.0.0.1:5432:5432"
+
+  # Long-running collection engine. All enumerations are submitted to it.
+  engine:
+    <<: *amass-common
+    build: *amass-build
+    image: exposure-rh/amass:${AMASS_VERSION:-v5.1.1}
+    container_name: amass-engine
+    restart: unless-stopped
+    command: ["engine"]
+    depends_on:
+      assetdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/bin/ae_isready", "--host", "127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    # Loopback only - the engine API has no auth by default. The host port is
+    # configurable because 4000 collides with a lot of dev servers; inside the
+    # network the engine is always http://engine:4000.
+    ports:
+      - "127.0.0.1:${ENGINE_HOST_PORT:-14000}:4000"
+
+  # One-shot client for enum / subs / viz / track / assoc.
+  # Not started by `up`; driven through ./amass.sh (or `docker compose run cli`).
+  cli:
+    <<: *amass-common
+    build: *amass-build
+    image: exposure-rh/amass:${AMASS_VERSION:-v5.1.1}
+    profiles: ["cli"]
+    depends_on:
+      engine:
+        condition: service_healthy
+    command: ["enum", "-h"]
+
+networks:
+  amass:
+    driver: bridge
+
+volumes:
+  assetdb-data:

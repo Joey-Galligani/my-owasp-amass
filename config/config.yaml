@@ -1,0 +1,88 @@
+# Amass v5 configuration.
+#
+# Rendered by entrypoint.sh into /.config/amass/config.yaml: the ${AMASS_DB_*}
+# placeholders below are expanded from .env, nothing else is touched.
+# Paths are relative to this file.
+
+scope:
+  # Fill these in for a standing engagement scope, or pass -d / -cidr / -asn
+  # per run on the command line.
+  # domains: # registered domain names in scope
+  #   - example.com
+  # ips: # single addresses, ranges (192.168.0.10-20) or full ranges
+  #   - 192.0.2.1
+  # cidrs:
+  #   - 192.0.2.0/24
+  # asns:
+  #   - 64496
+  ports: # used when actively scanning services
+    - 80
+    - 443
+    - 8000
+    - 8080
+    - 8443
+    - 8888
+  # blacklist: # subdomains never to be investigated
+  #   - dev.example.com
+
+options:
+  datasources: "./datasources.yaml"
+  database: "postgres://${AMASS_DB_USER}:${AMASS_DB_PASSWORD}@${AMASS_DB_HOST}:${AMASS_DB_PORT}/${AMASS_DB_NAME}"
+  # The engine URL is passed per invocation by ./amass.sh (-engine http://engine:4000)
+  # so that the engine container itself does not try to treat itself as remote.
+  # engine: "http://engine:4000"
+  bruteforce:
+    enabled: false
+    wordlists:
+      - "./wordlists/namelist.txt"
+  alterations:
+    enabled: false
+    wordlists:
+      - "./wordlists/alterations.txt"
+  default_transform_values:
+    ttl: 1440 # minutes; how long a result is reused before re-collection
+    confidence: 50
+    priority: 5
+
+# Per-asset-type collection TTLs. Anything listed with no value inherits
+# default_transform_values above. Removing an entry disables that transform.
+transformations:
+  Account->ALL:
+    ttl: 10800 # 7 days
+  AutnumRecord->ALL:
+  AutonomousSystem->ALL:
+  AutonomousSystem->RDAP:
+    ttl: 43200 # 30 days
+  ContactRecord->ALL:
+  DomainRecord->ALL:
+  File->ALL:
+  FQDN->ALL:
+  FQDN->DomainRecord:
+    ttl: 43200 # 30 days
+  FundsTransfer->ALL:
+    ttl: 10800 # 7 days
+  Identifier->ALL:
+  Identifier->GLEIF:
+    ttl: 43200 # 30 days
+  Identifier->RDAP:
+    ttl: 43200 # 30 days
+  IPAddress->ALL:
+  IPNetRecord->ALL:
+  Location->ALL:
+  Netblock->ALL:
+  Netblock->RDAP:
+    ttl: 43200 # 30 days
+  Organization->ALL:
+  Organization->GLEIF:
+    ttl: 43200 # 30 days
+  Person->ALL:
+    ttl: 43200 # 30 days
+  Phone->ALL:
+    ttl: 10800 # 7 days
+  Product->ALL:
+    ttl: 10800 # 7 days
+  ProductRelease->ALL:
+  Service->ALL:
+  TLSCertificate->ALL:
+    ttl: 10800 # 7 days
+  URL->ALL:
